@@ -1,74 +1,91 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <elf.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <elf.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-#define BUF_SIZE 128
+void check_elf(unsigned char *e_ident);
+void print_magic(unsigned char *e_ident);
+void print_class(unsigned char *e_ident);
+void print_data(unsigned char *e_ident);
+void print_version(unsigned char *e_ident);
+void print_abi(unsigned char *e_ident);
+void print_osabi(unsigned char *e_ident);
+void print_type(unsigned int e_type, unsigned char *e_ident);
+void print_entry(unsigned long int e_entry, unsigned char *e_ident);
+void close_elf(int elf);
+
+/* Declare the dprintf function */
+int dprintf(int fd, const char *format, ...);
 
 /**
- * error_exit - Prints an error message to stderr and exits with status code 98
- * @msg: The error message to be printed
+ * Checks if a file is an ELF file.
+ * @param e_ident A pointer to an array containing the ELF magic numbers.
+ *
+ * Description: If the file is not an ELF file - exit code 98.
  */
-void error_exit(char *msg)
+void check_elf(unsigned char *e_ident)
 {
-    fprintf(stderr, "%s\n", msg);
-    exit(98);
+    int index;
+    for (index = 0; index < 4; index++)
+    {
+        if (e_ident[index] != 127 &&
+            e_ident[index] != 'E' &&
+            e_ident[index] != 'L' &&
+            e_ident[index] != 'F')
+        {
+            dprintf(STDERR_FILENO, "Error: Not an ELF file\n");
+            exit(98);
+        }
+    }
 }
 
-/**
- * print_elf_header - Prints the information contained in the ELF header
- * @header: Pointer to the ELF header structure
- */
-void print_elf_header(Elf64_Ehdr *header)
+/* Function definitions... */
+
+int main(int __attribute__((__unused__)) argc, char *argv[])
 {
-    printf("Magic: ");
-    for (int i = 0; i < EI_NIDENT; i++)
-        printf("%02x ", header->e_ident[i]);
-    printf("\n");
+    Elf64_Ehdr *header;
+    int o, r;
 
-    printf("Class: %s\n", (header->e_ident[EI_CLASS] == ELFCLASS32) ? "ELF32" : "ELF64");
+    o = open(argv[1], O_RDONLY);
+    if (o == -1)
+    {
+        dprintf(STDERR_FILENO, "Error: Can't read file %s\n", argv[1]);
+        exit(98);
+    }
 
-    printf("Data: %s\n", (header->e_ident[EI_DATA] == ELFDATA2LSB) ? "2's complement, little endian" : "2's complement, big endian");
+    header = malloc(sizeof(Elf64_Ehdr));
+    if (header == NULL)
+    {
+        close_elf(o);
+        dprintf(STDERR_FILENO, "Error: Can't read file %s\n", argv[1]);
+        exit(98);
+    }
 
-    printf("Version: %d\n", header->e_ident[EI_VERSION]);
+    r = read(o, header, sizeof(Elf64_Ehdr));
+    if (r == -1)
+    {
+        free(header);
+        close_elf(o);
+        dprintf(STDERR_FILENO, "Error: `%s`: No such file\n", argv[1]);
+        exit(98);
+    }
 
-    printf("OS/ABI: %s\n", (header->e_ident[EI_OSABI] == ELFOSABI_SYSV) ? "UNIX - System V" : "UNIX - Other");
+    check_elf(header->e_ident);
+    printf("ELF Header:\n");
+    print_magic(header->e_ident);
+    print_class(header->e_ident);
+    print_data(header->e_ident);
+    print_version(header->e_ident);
+    print_osabi(header->e_ident);
+    print_abi(header->e_ident);
+    print_type(header->e_type, header->e_ident);
+    print_entry(header->e_entry, header->e_ident);
 
-    printf("ABI Version: %d\n", header->e_ident[EI_ABIVERSION]);
-
-    printf("Type: %s\n", (header->e_type == ET_EXEC) ? "EXEC (Executable file)" : "Other");
-
-    printf("Entry point address: 0x%lx\n", header->e_entry);
-}
-
-/**
- * main - Entry point of the program
- * @argc: The number of command-line arguments
- * @argv: An array of command-line argument strings
- * Return: 0 on success, 98 on error
- */
-int main(int argc, char *argv[])
-{
-    int fd;
-    Elf64_Ehdr header;
-
-    if (argc != 2)
-        error_exit("Usage: elf_header elf_filename");
-
-    fd = open(argv[1], O_RDONLY);
-    if (fd == -1)
-        error_exit("Error: Cannot open file");
-
-    if (read(fd, &header, sizeof(header)) != sizeof(header))
-        error_exit("Error: Cannot read ELF header");
-
-    if (header.e_ident[EI_MAG0] != ELFMAG0 || header.e_ident[EI_MAG1] != ELFMAG1 ||
-        header.e_ident[EI_MAG2] != ELFMAG2 || header.e_ident[EI_MAG3] != ELFMAG3)
-        error_exit("Error: Not an ELF file");
-
-    print_elf_header(&header);
-
-    close(fd);
+    free(header);
+    close_elf(o);
     return 0;
 }
+
