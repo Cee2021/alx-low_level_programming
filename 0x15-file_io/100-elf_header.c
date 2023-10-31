@@ -1,127 +1,78 @@
-#include <elf.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
+/*
+** 100-elf_header.c
+**
+** Display the information contained in the ELF header at the start of an ELF file.
+**
+** Usage: elf_header elf_filename
+**
+** Format: the same as readelf -h (version 2.26.1)
+**
+** If the file is not an ELF file, or on error, exit with status code 98 and display a comprehensive error message to stderr.
+**
+** You are allowed to use lseek once and read a maximum of two times at runtime.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
+#include <elf.h>
 
-void close_elf(int elf)
+static void print_elf_header(const Elf64_Ehdr *ehdr)
 {
-    close(elf);
+	printf("Magic:   %08x\n", ehdr->e_ident[EI_MAG0] |
+	                       (ehdr->e_ident[EI_MAG1] << 8) |
+	                       (ehdr->e_ident[EI_MAG2] << 16) |
+	                       (ehdr->e_ident[EI_MAG3] << 24));
+	printf("Class:    %d\n", ehdr->e_ident[EI_CLASS]);
+	printf("Data:     %d\n", ehdr->e_ident[EI_DATA]);
+	printf("Version:  %d\n", ehdr->e_ident[EI_VERSION]);
+	printf("OS/ABI:    %d\n", ehdr->e_ident[EI_OSABI]);
+	printf("ABI Version: %d\n", ehdr->e_ident[EI_ABIVERSION]);
+	printf("Type:      %d\n", ehdr->e_type);
+	printf("Entry point address: %016lx\n", ehdr->e_entry);
 }
 
-void print_magic()
+int main(int argc, char *argv[])
 {
-    /* Function implementation ... */
-}
+	FILE *fp;
+	Elf64_Ehdr ehdr;
 
-void print_class()
-{
-    /* Function implementation ... */
-}
+	if (argc != 2)
+	{
+		fprintf(stderr, "Usage: elf_header elf_filename\n");
+		return EXIT_FAILURE;
+	}
 
-void print_data()
-{
-    /* Function implementation ... */
-}
+	fp = fopen(argv[1], "rb");
+	if (fp == NULL)
+	{
+		fprintf(stderr, "Error opening file '%s': %s\n", argv[1], strerror(errno));
+		return EXIT_FAILURE;
+	}
 
-void print_version()
-{
-    /* Function implementation ... */
-}
+	/* Seek to the ELF header. */
+	lseek(fileno(fp), 0, SEEK_SET);
 
-void print_abi()
-{
-    /* Function implementation ... */
-}
+	/* Read the ELF header. */
+	if (fread(&ehdr, sizeof(ehdr), 1, fp) != 1)
+	{
+		fprintf(stderr, "Error reading ELF header: %s\n", strerror(errno));
+		return EXIT_FAILURE;
+	}
 
-void print_osabi()
-{
-    /* Function implementation ... */
-}
+	fclose(fp);
 
-void print_type(unsigned int e_type)
-{
-    /* Function implementation ... */
-    printf("Type: %u\n", e_type);
-}
+	/* Check if the file is an ELF file. */
+	if (memcmp(ehdr.e_ident, ELFMAG, SELFMAG) != 0)
+	{
+		fprintf(stderr, "File '%s' is not an ELF file\n", argv[1]);
+		return EXIT_FAILURE;
+	}
 
-void print_entry(unsigned long int e_entry)
-{
-    /* Function implementation ... */
-    printf("Entry: %lu\n", e_entry);
-}
+	print_elf_header(&ehdr);
 
-/* Declare the dprintf function */
-int dprintf(int fd, const char *format, ...);
-
-/**
- * Checks if a file is an ELF file.
- * @param e_ident A pointer to an array containing the ELF magic numbers.
- *
- * Description: If the file is not an ELF file - exit code 98.
- */
-void check_elf(unsigned char *e_ident)
-{
-    int index;
-    for (index = 0; index < 4; index++)
-    {
-        if (e_ident[index] != 127 &&
-            e_ident[index] != 'E' &&
-            e_ident[index] != 'L' &&
-            e_ident[index] != 'F')
-        {
-            dprintf(STDERR_FILENO, "Error: Not an ELF file\n");
-            exit(98);
-        }
-    }
-}
-
-/* Function definitions... */
-
-int main(int __attribute__((__unused__)) argc, char *argv[])
-{
-    Elf64_Ehdr *header;
-    int o, r;
-
-    o = open(argv[1], O_RDONLY);
-    if (o == -1)
-    {
-        dprintf(STDERR_FILENO, "Error: Can't read file %s\n", argv[1]);
-        exit(98);
-    }
-
-    header = malloc(sizeof(Elf64_Ehdr));
-    if (header == NULL)
-    {
-        close_elf(o);
-        dprintf(STDERR_FILENO, "Error: Can't read file %s\n", argv[1]);
-        exit(98);
-    }
-
-    r = read(o, header, sizeof(Elf64_Ehdr));
-    if (r == -1)
-    {
-        free(header);
-        close_elf(o);
-        dprintf(STDERR_FILENO, "Error: `%s`: No such file\n", argv[1]);
-        exit(98);
-    }
-
-    check_elf(header->e_ident);
-    printf("ELF Header:\n");
-    print_magic();
-    print_class();
-    print_data();
-    print_version();
-    print_osabi();
-    print_abi();
-    print_type(header->e_type);
-    print_entry(header->e_entry);
-
-    free(header);
-    close_elf(o);
-    return 0;
+	return EXIT_SUCCESS;
 }
 
